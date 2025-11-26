@@ -1,0 +1,55 @@
+# vLLM Server Configuration
+# Copy this file to vllm_config.yaml and customize for your setup
+#
+# Quick start:
+#   cp vllm_config.example.yaml vllm_config.yaml
+#   # Edit vllm_config.yaml based on your model and GPU
+#   ./start_vllm.sh
+
+server:
+  # Port for vLLM server
+  port: 8000
+
+  # Host address
+  # 0.0.0.0 = allow external connections
+  # localhost = local only
+  host: "0.0.0.0"
+
+  # Model to load from HuggingFace or local path
+  # Examples:
+  #   - "meta-llama/Llama-2-7b-chat-hf"
+  #   - "mistralai/Mistral-7B-Instruct-v0.2"
+  #   - "allenai/olmOCR-2-7B-1025"
+  model: "mistralai/Mistral-7B-Instruct-v0.2"
+
+gpu:
+  # GPU memory utilization (0.0 to 1.0)
+  # Fraction of GPU VRAM to use for KV-cache
+  # Higher values = more concurrent requests, but less safety margin
+  #
+  # Recommended by GPU VRAM:
+  #   40+ GB:  0.95  (A100, H100)
+  #   24 GB:   0.90  (RTX 3090, 4090)
+  #   16 GB:   0.85  (RTX 4080)
+  #   12 GB:   0.80  (RTX 4070 Ti, L4)
+  #   8 GB:    0.75  (RTX 4060)
+  memory_utilization: 0.90
+
+  # Maximum sequence length in tokens (prompt + completion)
+  # Higher = more VRAM needed
+  # Set to model's max context or lower based on VRAM
+  #
+  # Common values:
+  #   4096, 8192, 16384, 32768
+  max_model_len: 8192
+
+  # Tensor parallelism (number of GPUs to split model across)
+  # Use 1 for single GPU, 2 for dual GPU setup, etc.
+  tensor_parallel_size: 1
+
+# Optional: Additional vLLM arguments
+# Uncomment and modify as needed
+# additional_args:
+#   # Enable specific features
+#   # - "--enable-prefix-caching"
+#   # - "--disable-log-requests"

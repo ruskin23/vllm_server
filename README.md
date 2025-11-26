@@ -12,7 +12,9 @@ Quick deployment setup for running vLLM inference servers on rented GPUs. Clone 
 
 ## Quick Start
 
-### 1. Clone and Setup
+Two scenarios: **Local GPU** (you have a GPU on your machine) or **Remote GPU** (rented GPU server).
+
+### Local GPU Setup
 
 ```bash
 # Clone this repo
@@ -21,9 +23,41 @@ cd vllm_server
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Configure and start (see sections below)
 ```
 
-### 2. Configure
+### Remote GPU Setup (RunPod, Vast.ai, etc.)
+
+**On the GPU server:**
+```bash
+# Clone repo
+git clone <your-repo-url>
+cd vllm_server
+
+# One-command setup
+./setup_remote.sh
+# This installs dependencies and helps configure
+
+# Start server
+./start_vllm.sh --background
+```
+
+**On your local machine:**
+```bash
+# In the same repo directory
+./connect.sh
+# Enter SSH details when prompted
+# Keep this running to maintain the tunnel
+```
+
+Now use `http://localhost:8000` from your local machine!
+
+See **[Remote Access](#remote-access)** section for details.
+
+---
+
+## Configuration
 
 ```bash
 # Copy example config
@@ -45,7 +79,7 @@ Key settings to adjust:
 - 24 GB GPU: `memory_utilization: 0.90`, `max_model_len: 16384`
 - 40+ GB GPU: `memory_utilization: 0.95`, `max_model_len: 32768`
 
-### 3. Start Server
+## Starting the Server
 
 ```bash
 # Make script executable
@@ -58,7 +92,7 @@ chmod +x start_vllm.sh
 ./start_vllm.sh --background
 ```
 
-### 4. Verify Server
+## Verify Server
 
 ```bash
 # Check if server is running
@@ -264,30 +298,155 @@ netstat -tulpn | grep 8000
 curl http://localhost:8000/v1/models
 ```
 
-## Common Scenarios
+## Remote Access
 
-### Running on a rented GPU
+### How It Works
 
+When running vLLM on a remote GPU server, you need to access it from your local machine. The secure way is using **SSH tunneling** (port forwarding).
+
+**The Flow:**
+```
+Your Laptop                SSH Tunnel              GPU Server
+┌──────────┐              ┌──────────┐            ┌──────────┐
+│          │              │          │            │          │
+│  Python  │─────────────▶│localhost │───────────▶│  vLLM    │
+│  script  │  HTTP to     │   :8000  │  Forwarded │  :8000   │
+│          │  localhost   │          │  via SSH   │          │
+└──────────┘              └──────────┘            └──────────┘
+```
+
+### Setup SSH Tunnel
+
+**Step 1: Start vLLM on GPU server**
 ```bash
-# SSH into the server
-ssh user@gpu-server
+# SSH into your GPU server
+ssh user@gpu-server-ip
 
-# Clone repo
+# Clone and setup
 git clone <your-repo-url>
 cd vllm_server
+./setup_remote.sh
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure
-cp vllm_config.example.yaml vllm_config.yaml
-nano vllm_config.yaml  # Set your model and GPU settings
-
-# Start server in background
+# Start server
 ./start_vllm.sh --background
+```
 
-# Verify
-python vllm_server.py --server http://localhost:8000/v1 --test
+**Step 2: Create tunnel from your laptop**
+```bash
+# On your local machine, in the repo directory
+./connect.sh
+
+# You'll be prompted for:
+# - SSH connection details (user@ip -p port)
+# - Remote port (default: 8000)
+# - Local port (default: 8000)
+
+# Settings are saved in .tunnel_config for next time
+```
+
+**Step 3: Use from your laptop**
+```python
+# On your laptop - talk to localhost!
+import requests
+
+response = requests.post(
+    "http://localhost:8000/v1/chat/completions",
+    json={
+        "model": "your-model",
+        "messages": [{"role": "user", "content": "Hello!"}]
+    }
+)
+print(response.json()["choices"][0]["message"]["content"])
+```
+
+### Provider-Specific Instructions
+
+**RunPod:**
+1. Go to your pod's connection info
+2. Copy the "SSH over exposed TCP" command
+3. Example: `ssh root@123.456.789.0 -p 12345 -i ~/.ssh/id_ed25519`
+4. When running `./connect.sh`, paste: `root@123.456.789.0 -p 12345 -i ~/.ssh/id_ed25519`
+
+**Vast.ai:**
+1. Click on your instance
+2. Copy the SSH command from "Connect" section
+3. Example: `ssh -p 41234 root@ssh5.vast.ai`
+4. When running `./connect.sh`, paste: `-p 41234 root@ssh5.vast.ai`
+
+**AWS/GCP/Azure:**
+1. Use your instance's public IP
+2. Ensure security group allows SSH (port 22)
+3. Use your SSH key path
+4. Example: `ubuntu@54.123.45.67 -i ~/.ssh/aws-key.pem`
+
+### Manual SSH Tunnel (Alternative)
+
+If you prefer not to use the script:
+```bash
+# On your laptop
+ssh -L 8000:localhost:8000 user@gpu-server-ip -N
+
+# Keep this terminal open
+# Access server at http://localhost:8000
+```
+
+### Troubleshooting Remote Access
+
+**Tunnel disconnects frequently:**
+```bash
+# Edit connect.sh or use manual tunnel with keep-alive:
+ssh -L 8000:localhost:8000 user@gpu-server-ip -N \
+    -o ServerAliveInterval=60 \
+    -o ServerAliveCountMax=3
+```
+
+**"Port already in use":**
+```bash
+# Kill process using the port
+lsof -ti:8000 | xargs kill -9
+
+# Or use a different local port
+./connect.sh  # Choose different local port when prompted
+```
+
+**Can't connect to GPU server:**
+- Verify SSH works: `ssh user@gpu-server-ip`
+- Check firewall allows SSH (port 22)
+- Confirm SSH credentials are correct
+
+**Tunnel works but server not responding:**
+```bash
+# SSH into GPU server and check if vLLM is running
+ssh user@gpu-server-ip
+python3 vllm_server.py --check
+```
+
+## Common Scenarios
+
+### Running on a rented GPU (Complete Workflow)
+
+**On GPU server:**
+```bash
+# Clone and setup
+git clone <your-repo-url>
+cd vllm_server
+./setup_remote.sh
+
+# Edit configuration if needed
+nano vllm_config.yaml
+
+# Start server
+./start_vllm.sh --background
+```
+
+**On your laptop:**
+```bash
+# Create SSH tunnel
+cd vllm_server  # Same repo
+./connect.sh
+
+# In another terminal, test it
+python3 client_example.py
 ```
 
 ### Switching models
@@ -316,11 +475,19 @@ Use different ports:
 
 ## Files
 
+**Core:**
 - `vllm_config.example.yaml` - Example configuration file
 - `start_vllm.sh` - Server startup script
-- `vllm_server.py` - Server utilities (health checks, testing)
 - `config.py` - Configuration loader Python module
 - `requirements.txt` - Python dependencies
+
+**Utilities:**
+- `vllm_server.py` - Server utilities (health checks, testing)
+- `client_example.py` - Example Python client with streaming support
+
+**Remote Access:**
+- `connect.sh` - SSH tunnel setup (run on local machine)
+- `setup_remote.sh` - One-command GPU server setup
 
 ## Requirements
 

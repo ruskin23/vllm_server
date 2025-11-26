@@ -39,6 +39,9 @@ vllm_config.yaml
 logs/
 *.log
 
+# SSH tunnel configuration
+.tunnel_config
+
 # Model cache (optional - uncomment to ignore downloaded models)
 # models/
 # .cache/

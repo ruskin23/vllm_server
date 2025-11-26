@@ -47,9 +47,108 @@ gpu:
   # Use 1 for single GPU, 2 for dual GPU setup, etc.
   tensor_parallel_size: 1
 
-# Optional: Additional vLLM arguments
-# Uncomment and modify as needed
-# additional_args:
-#   # Enable specific features
-#   # - "--enable-prefix-caching"
-#   # - "--disable-log-requests"
+# Quantization (optional)
+# Use quantization to reduce VRAM usage and run larger models on smaller GPUs
+# Uncomment to enable
+quantization:
+  # Quantization method
+  # Options: "awq", "gptq", "squeezellm", "fp8", "bitsandbytes"
+  # Leave commented out if using a pre-quantized model (e.g., TheBloke/Mistral-7B-AWQ)
+  # method: "awq"
+
+  # For bitsandbytes only: specify load format
+  # Options: "bitsandbytes-4bit", "bitsandbytes-nf4"
+  # load_format: "bitsandbytes-4bit"
+
+# ============================================================
+# QUANTIZATION GUIDE
+# ============================================================
+#
+# What is quantization?
+#   Reduces model precision from 16-bit to 4-bit or 8-bit
+#   Saves 3-4x VRAM with minimal quality loss
+#   Example: 7B model goes from 14GB → 4GB VRAM
+#
+# When to use:
+#   ✓ Running 7B+ models on GPUs with limited VRAM
+#   ✓ Want to rent cheaper GPUs (12GB instead of 24GB)
+#   ✓ Need more concurrent requests (more VRAM for KV-cache)
+#   ✓ Cost optimization for production
+#
+# Methods comparison:
+#
+#   AWQ (Recommended):
+#     - Best quality/performance trade-off
+#     - 4-bit quantization
+#     - Minimal accuracy loss (~0.1%)
+#     - Use pre-quantized models: "TheBloke/MODEL-NAME-AWQ"
+#
+#   GPTQ:
+#     - Good quality, widely available
+#     - 4-bit quantization
+#     - Use pre-quantized models: "TheBloke/MODEL-NAME-GPTQ"
+#
+#   FP8:
+#     - 8-bit floating point
+#     - Requires newer GPUs (H100, Ada Lovelace)
+#     - Better quality than 4-bit, but less memory savings
+#     - Use: method: "fp8"
+#
+#   bitsandbytes:
+#     - Dynamic quantization
+#     - Works with any model (no pre-quantization needed)
+#     - Slightly slower than AWQ/GPTQ
+#     - Use: method: "bitsandbytes", load_format: "bitsandbytes-4bit"
+#
+# How to use:
+#
+#   Option 1 - Pre-quantized model (EASIEST):
+#     server:
+#       model: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+#     # No quantization section needed!
+#
+#   Option 2 - Dynamic quantization:
+#     server:
+#       model: "mistralai/Mistral-7B-Instruct-v0.2"
+#     quantization:
+#       method: "bitsandbytes"
+#       load_format: "bitsandbytes-4bit"
+#
+# ============================================================
+# LOW VRAM PRESETS (6-8GB GPUs)
+# ============================================================
+#
+# For 6GB GPU (RTX 3060, RTX 4060):
+#   server:
+#     model: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+#   gpu:
+#     memory_utilization: 0.70
+#     max_model_len: 4096
+#
+# For 8GB GPU (RTX 3070, RTX 4060 Ti):
+#   server:
+#     model: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+#   gpu:
+#     memory_utilization: 0.75
+#     max_model_len: 6144
+#
+# ============================================================
+# COST OPTIMIZATION FOR RENTED GPUs
+# ============================================================
+#
+# Without quantization:
+#   Mistral-7B (FP16) needs 24GB GPU → $0.79/hour
+#   Cost per day: $18.96
+#
+# With quantization:
+#   Mistral-7B (AWQ) needs 12GB GPU → $0.34/hour
+#   Cost per day: $8.16
+#   Savings: $324/month!
+#
+# Popular quantized models:
+#   - TheBloke/Mistral-7B-Instruct-v0.2-AWQ
+#   - TheBloke/Llama-2-7B-Chat-AWQ
+#   - TheBloke/zephyr-7B-beta-AWQ
+#   - TheBloke/Mixtral-8x7B-Instruct-v0.1-AWQ (needs 24GB even quantized)
+#
+# ============================================================

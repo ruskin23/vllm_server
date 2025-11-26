@@ -70,13 +70,25 @@ class VLLMConfig:
         """Get tensor parallel size"""
         return self._config['gpu']['tensor_parallel_size']
 
+    @property
+    def quantization_method(self) -> str:
+        """Get quantization method (if specified)"""
+        quant = self._config.get('quantization', {})
+        return quant.get('method') if quant and 'method' in quant else None
+
+    @property
+    def quantization_load_format(self) -> str:
+        """Get quantization load format (for bitsandbytes)"""
+        quant = self._config.get('quantization', {})
+        return quant.get('load_format') if quant and 'load_format' in quant else None
+
     def get_vllm_args(self) -> Dict[str, Any]:
         """Get all vLLM arguments as dict
 
         Returns:
             dict: vLLM server arguments
         """
-        return {
+        args = {
             'model': self.model_name,
             'port': self.server_port,
             'host': self.server_host,
@@ -84,6 +96,15 @@ class VLLMConfig:
             'max_model_len': self.max_model_len,
             'tensor_parallel_size': self.tensor_parallel_size,
         }
+
+        # Add quantization if specified
+        if self.quantization_method:
+            args['quantization'] = self.quantization_method
+
+        if self.quantization_load_format:
+            args['load_format'] = self.quantization_load_format
+
+        return args
 
 
 if __name__ == "__main__":
@@ -96,5 +117,12 @@ if __name__ == "__main__":
         print(f"  Memory Utilization: {config.memory_utilization}")
         print(f"  Max Model Length: {config.max_model_len}")
         print(f"  Tensor Parallel: {config.tensor_parallel_size}")
+
+        if config.quantization_method:
+            print(f"  Quantization: {config.quantization_method}")
+            if config.quantization_load_format:
+                print(f"  Load Format: {config.quantization_load_format}")
+        else:
+            print(f"  Quantization: None (or pre-quantized model)")
     except FileNotFoundError as e:
         print(f"Error: {e}")

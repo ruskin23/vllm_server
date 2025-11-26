@@ -6,6 +6,9 @@ Quick deployment setup for running vLLM inference servers on rented GPUs. Clone 
 
 - Single configuration file for all settings
 - Simple startup script with foreground/background modes
+- Quantization support (AWQ, GPTQ, FP8, bitsandbytes)
+- Run 7B models on 6GB GPUs with quantization
+- SSH tunnel setup for remote access
 - Health check and testing utilities
 - GPU memory optimization presets
 - OpenAI-compatible API
@@ -72,12 +75,20 @@ Key settings to adjust:
 - `server.port`: Server port (default: 8000)
 - `gpu.memory_utilization`: GPU VRAM usage (0.75-0.95)
 - `gpu.max_model_len`: Max sequence length
+- `quantization.method`: (Optional) Quantization method for low VRAM
 
-**GPU Presets:**
+**GPU Presets (Without Quantization):**
 - 8 GB GPU: `memory_utilization: 0.75`, `max_model_len: 4096`
 - 16 GB GPU: `memory_utilization: 0.85`, `max_model_len: 8192`
 - 24 GB GPU: `memory_utilization: 0.90`, `max_model_len: 16384`
 - 40+ GB GPU: `memory_utilization: 0.95`, `max_model_len: 32768`
+
+**With Quantization (Run 7B models on smaller GPUs):**
+- 6 GB GPU: Use AWQ quantized model
+- 8 GB GPU: Use AWQ quantized model
+- 12 GB GPU: Run quantized 7B or standard 3B models
+
+See [Quantization](#quantization) section for details.
 
 ## Starting the Server
 
@@ -170,6 +181,158 @@ lsof -ti:8000 | xargs kill
 # Monitor GPU usage
 watch -n 1 nvidia-smi
 ```
+
+## Quantization
+
+Quantization reduces model memory usage by 3-4x with minimal quality loss, allowing you to run larger models on smaller GPUs or rent cheaper hardware.
+
+### Why Use Quantization?
+
+**Benefits:**
+- Run 7B models on 6-8GB GPUs
+- Rent cheaper GPUs (12GB instead of 24GB)
+- More concurrent requests (more VRAM for KV-cache)
+- Save $300+/month on GPU costs
+
+**Quality:**
+- AWQ/GPTQ 4-bit: ~0.1% perplexity increase
+- Nearly identical outputs for most tasks
+- Minimal impact on generation quality
+
+### Quick Start with Quantization
+
+**Option 1: Use pre-quantized model (Easiest)**
+
+```yaml
+server:
+  model: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+
+gpu:
+  memory_utilization: 0.80
+  max_model_len: 4096
+
+# No quantization section needed - model is already quantized!
+```
+
+**Option 2: Dynamic quantization**
+
+```yaml
+server:
+  model: "mistralai/Mistral-7B-Instruct-v0.2"
+
+gpu:
+  memory_utilization: 0.75
+  max_model_len: 4096
+
+quantization:
+  method: "bitsandbytes"
+  load_format: "bitsandbytes-4bit"
+```
+
+### Quantization Methods
+
+| Method | Bits | Quality | Speed | Notes |
+|--------|------|---------|-------|-------|
+| **AWQ** | 4-bit | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Best overall, use pre-quantized models |
+| **GPTQ** | 4-bit | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | Good compatibility |
+| **FP8** | 8-bit | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Requires newer GPUs (H100, Ada) |
+| **bitsandbytes** | 4-bit | ⭐⭐⭐⭐ | ⭐⭐⭐ | Works with any model, no pre-quantization |
+
+### Popular Pre-Quantized Models
+
+All available on HuggingFace from TheBloke:
+
+```yaml
+# 7B models (need ~4GB VRAM quantized)
+- "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+- "TheBloke/Llama-2-7B-Chat-AWQ"
+- "TheBloke/zephyr-7B-beta-AWQ"
+- "TheBloke/OpenHermes-2.5-Mistral-7B-AWQ"
+
+# 13B models (need ~8GB VRAM quantized)
+- "TheBloke/Llama-2-13B-Chat-AWQ"
+- "TheBloke/Vicuna-13B-v1.5-AWQ"
+
+# Mixtral 8x7B (need ~24GB VRAM even quantized)
+- "TheBloke/Mixtral-8x7B-Instruct-v0.1-AWQ"
+```
+
+### Cost Comparison
+
+**Without quantization:**
+```
+Mistral-7B (FP16): 14GB VRAM needed
+GPU: RTX 4090 (24GB) @ $0.79/hour
+Cost: $18.96/day = $570/month
+```
+
+**With quantization:**
+```
+Mistral-7B (AWQ 4-bit): 4GB VRAM needed
+GPU: RTX 4070 Ti (12GB) @ $0.34/hour
+Cost: $8.16/day = $245/month
+Savings: $325/month!
+```
+
+## Low VRAM Setup (6-8GB GPUs)
+
+Running vLLM on consumer GPUs or budget cloud instances.
+
+### For 6GB GPU (RTX 3060, RTX 4060)
+
+**Recommended config:**
+```yaml
+server:
+  port: 8000
+  host: "127.0.0.1"  # localhost for local use
+  model: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+
+gpu:
+  memory_utilization: 0.70  # Conservative
+  max_model_len: 4096       # 4K context
+  tensor_parallel_size: 1
+```
+
+**Alternative: Smaller non-quantized models**
+```yaml
+server:
+  model: "microsoft/Phi-3-mini-4k-instruct"  # 3B model, ~3GB
+
+gpu:
+  memory_utilization: 0.75
+  max_model_len: 4096
+```
+
+### For 8GB GPU (RTX 3070, RTX 4060 Ti)
+
+```yaml
+server:
+  model: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+
+gpu:
+  memory_utilization: 0.75
+  max_model_len: 6144  # 6K context
+  tensor_parallel_size: 1
+```
+
+### Small Models (No Quantization Needed)
+
+Perfect for 6GB GPUs without quantization:
+
+| Model | VRAM | Context | Best For |
+|-------|------|---------|----------|
+| Phi-3-mini | ~3GB | 4K | General chat, reasoning |
+| Qwen2.5-3B | ~3GB | 8K | Multilingual, long context |
+| Gemma-2-2B | ~2GB | 8K | Efficient, good quality |
+| TinyLlama-1.1B | ~1GB | 2K | Testing, very fast |
+
+### Tips for Low VRAM
+
+1. **Start conservative** - Use lower `memory_utilization` (0.70-0.75)
+2. **Reduce context** - Lower `max_model_len` if you don't need long context
+3. **Use AWQ models** - Best quality for 4-bit quantization
+4. **Monitor GPU** - Use `watch -n 1 nvidia-smi` to check VRAM usage
+5. **Increase gradually** - If stable, increase `memory_utilization` by 0.05
 
 ## Configuration Reference
 

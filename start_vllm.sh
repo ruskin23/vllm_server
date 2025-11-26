@@ -42,12 +42,16 @@ MEMORY_UTIL=$(parse_yaml "memory_utilization")
 MAX_MODEL_LEN=$(parse_yaml "max_model_len")
 TENSOR_PARALLEL=$(parse_yaml "tensor_parallel_size")
 
+# Read quantization settings (optional)
+QUANT_METHOD=$(grep -E "^\s*method:" "$CONFIG_FILE" | grep -v "^#" | sed 's/.*: //' | tr -d '"' | tr -d "'" || echo "")
+QUANT_LOAD_FORMAT=$(grep -E "^\s*load_format:" "$CONFIG_FILE" | grep -v "^#" | sed 's/.*: //' | tr -d '"' | tr -d "'" || echo "")
+
 # Defaults if parsing failed
-PORT=${PORT:-30024}
+PORT=${PORT:-8000}
 HOST=${HOST:-0.0.0.0}
-MODEL=${MODEL:-allenai/olmOCR-2-7B-1025}
+MODEL=${MODEL:-mistralai/Mistral-7B-Instruct-v0.2}
 MEMORY_UTIL=${MEMORY_UTIL:-0.85}
-MAX_MODEL_LEN=${MAX_MODEL_LEN:-12288}
+MAX_MODEL_LEN=${MAX_MODEL_LEN:-8192}
 TENSOR_PARALLEL=${TENSOR_PARALLEL:-1}
 
 # Parse command-line arguments (override config)
@@ -122,6 +126,14 @@ echo -e "Host:                 ${GREEN}${HOST}${NC}"
 echo -e "Memory Utilization:   ${GREEN}${MEMORY_UTIL}${NC}"
 echo -e "Max Model Length:     ${GREEN}${MAX_MODEL_LEN}${NC}"
 echo -e "Tensor Parallel Size: ${GREEN}${TENSOR_PARALLEL}${NC}"
+if [ -n "$QUANT_METHOD" ]; then
+    echo -e "Quantization:         ${GREEN}${QUANT_METHOD}${NC}"
+    if [ -n "$QUANT_LOAD_FORMAT" ]; then
+        echo -e "Load Format:          ${GREEN}${QUANT_LOAD_FORMAT}${NC}"
+    fi
+else
+    echo -e "Quantization:         ${GREEN}None (or pre-quantized model)${NC}"
+fi
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -158,6 +170,15 @@ VLLM_CMD="${VLLM_CMD} --gpu-memory-utilization ${MEMORY_UTIL}"
 VLLM_CMD="${VLLM_CMD} --max-model-len ${MAX_MODEL_LEN}"
 VLLM_CMD="${VLLM_CMD} --tensor-parallel-size ${TENSOR_PARALLEL}"
 VLLM_CMD="${VLLM_CMD} --disable-log-requests"
+
+# Add quantization flags if specified
+if [ -n "$QUANT_METHOD" ]; then
+    VLLM_CMD="${VLLM_CMD} --quantization ${QUANT_METHOD}"
+fi
+
+if [ -n "$QUANT_LOAD_FORMAT" ]; then
+    VLLM_CMD="${VLLM_CMD} --load-format ${QUANT_LOAD_FORMAT}"
+fi
 
 echo -e "${GREEN}Starting vLLM server...${NC}"
 echo "Command: $VLLM_CMD"
